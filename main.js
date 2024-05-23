@@ -1,8 +1,38 @@
 require('dotenv').config();
-const { VertexAI } = require('@google-cloud/vertexai');
+const {VertexAI} = require('@google-cloud/vertexai');
 const fs = require('node:fs');
 const path = require('node:path');
 const { Client, Collection, Events, GatewayIntentBits } = require('discord.js');
+
+const vertex = new VertexAI({project: process.env.PROJECT_ID, location: process.env.LOCATION});
+const generativeModel = vertex.preview.getGenerativeModel({
+    model: process.env.MODEL,
+    generationConfig: {
+      'maxOutputTokens': 1500,
+      'temperature': 1,
+      'topP': 1,
+    },
+    safetySettings: [
+      {
+          'category': 'HARM_CATEGORY_HATE_SPEECH',
+          'threshold': 'BLOCK_ONLY_HIGH'
+      },
+      {
+          'category': 'HARM_CATEGORY_DANGEROUS_CONTENT',
+          'threshold': 'BLOCK_ONLY_HIGH'
+      },
+      {
+          'category': 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+          'threshold': 'BLOCK_ONLY_HIGH'
+      },
+      {
+          'category': 'HARM_CATEGORY_HARASSMENT',
+          'threshold': 'BLOCK_ONLY_HIGH'
+      }
+    ],
+});
+
+const streamChat = generativeModel.startChat({})
 
 const client = new Client({ intents: [
     GatewayIntentBits.Guilds,
@@ -49,31 +79,25 @@ client.on('interactionCreate', async interaction => {
 })
 
 async function createStreamChat(message) {
-    projectId = process.env.PROJECT_ID,
-    location = process.env.LOCATION,
-    model = 'gemini-1.0-pro-002'
-    // Initialize Vertex with your Cloud project and location
-    const vertexAI = new VertexAI({project: projectId, location: location});
+    // console.log(message);
+    console.log(`Author: ${message.author.username}`);
+    console.log(`Author: ${message.author.globalName}`);
+    message.channel.sendTyping();
   
-    // Instantiate the model
-    const generativeModel = vertexAI.getGenerativeModel({
-      model: model,
-    });
+    // const chat = generativeModel.startChat({});
+    const messageContent = message.content.startsWith('<@') ? message.content.slice(22) : message.content;
+
+    console.log(messageContent);
+
+    const streamResult = await streamChat.sendMessageStream(messageContent);
+    const streamResponse = await streamResult.response;
+    const discordResponse = streamResponse.candidates[0].content.parts[0].text;
   
-    const chat = generativeModel.startChat({});
-    const chatInput1 = message.content.slice(22);
-  
-    console.log(`User: ${chatInput1}`);
-  
-    const result1 = await chat.sendMessageStream(chatInput1);
-    let concatenatedResult = '';
-    for await (const item of result1.stream) {
-        if(item.candidates[0].content.parts[0]) {
-            console.log(item.candidates[0].content.parts[0].text);
-            concatenatedResult += item.candidates[0].content.parts[0].text;
-        }
-    }
-    message.reply(concatenatedResult);
+    // const responseStream = await chat.sendMessageStream(chatInput1);
+    // let aggragatedResponse = await responseStream.response;
+    // let reply = aggragatedResponse.candidates[0].content.parts[0].text
+    // console.log(reply)
+    if(discordResponse) message.reply(discordResponse.substring(0, 2000));
   }
 
 function boot() {
