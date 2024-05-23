@@ -4,12 +4,13 @@
   "description": "Discord Bot that uses Gemini API",
   "main": "main.js",
   "scripts": {
-    "execute" : "node --env-file .env && node main.js"
+    "execute": "node --env-file .env && node ."
   },
   "author": "Nicholas Jeans",
   "license": "MIT",
   "dependencies": {
     "@google-cloud/vertexai": "^1.2.0",
-    "discord.js": "^14.15.2"
+    "discord.js": "^14.15.2",
+    "dotenv": "^16.4.5"
   }
 }
