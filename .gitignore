@@ -6,3 +6,6 @@ npm-debug.log*
 
 # Ignore yarn lock file
 yarn.lock
+
+#Ignore environment variables
+.env
