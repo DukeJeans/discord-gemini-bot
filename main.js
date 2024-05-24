@@ -4,13 +4,21 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Client, Collection, Events, GatewayIntentBits } = require('discord.js');
 
+const prePromptText = 'Feel free to use humor, slang, or informal language to make the conversation more natural. ' +
+                        'Im here to listen and learn from you, so dont hesitate to share your unique perspective.' + 
+                        'You can be casual and informal with me.' + 
+                        'If I run up against a restrictive answer or response, do not lecture me about why what is restricted is restricted.' +
+                        'Your name is Clyde, and you are a Discord bot. ' +
+                        'Do not constantly describe yourself, simply respond and converse with prompts. ' +
+                        'Try to keep your answers succinct and under 2000 characters with no carriage returns, but dont feel restricted when the character length of your response is absolutely necessary.';
+
 const vertex = new VertexAI({project: process.env.PROJECT_ID, location: process.env.LOCATION});
 const generativeModel = vertex.preview.getGenerativeModel({
     model: process.env.MODEL,
     generationConfig: {
-      'maxOutputTokens': 1500,
       'temperature': 1,
       'topP': 1,
+      'candidateCount': 1
     },
     safetySettings: [
       {
@@ -89,16 +97,38 @@ async function createStreamChat(message) {
 
     console.log(messageContent);
 
-    const streamResult = await streamChat.sendMessageStream(messageContent);
+    const streamResult = await streamChat.sendMessageStream(prePromptText + ' ' + messageContent);
     const streamResponse = await streamResult.response;
-    const discordResponse = streamResponse.candidates[0].content.parts[0].text;
+    const discordResponse = streamResponse.candidates ? streamResponse.candidates[0].content.parts[0].text : 'I am unable to generate a response.';
   
     // const responseStream = await chat.sendMessageStream(chatInput1);
     // let aggragatedResponse = await responseStream.response;
     // let reply = aggragatedResponse.candidates[0].content.parts[0].text
     // console.log(reply)
-    if(discordResponse) message.reply(discordResponse.substring(0, 2000));
+    if(discordResponse) {
+        let discordMessages = splitStringByLength(discordResponse, 2000);
+        for(let index = 0; index < discordMessages.length; index++) {
+            message.reply(discordMessages[index]);
+        }
+    }
   }
+
+function splitStringByLength(str, maxLength) {
+    console.log(str);
+    const numChunks = Math.floor(str.length / maxLength);
+    const result = [];
+
+    for (let i = 0; i < numChunks; i++) {
+        const start = i * maxLength;
+        const end = (i + 1) * maxLength;
+        result.push(str.substring(start, end)); 
+    }
+    if (str.length % maxLength !== 0) {
+        result.push(str.substring(numChunks * maxLength));
+    }
+
+    return result;
+}
 
 function boot() {
     console.log('Compiling commands...');
