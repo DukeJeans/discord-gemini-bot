@@ -114,10 +114,11 @@ async function createStreamChat(message) {
                   }
                 ],
                 "parameters": {
-                  "sampleCount": 1,
+                  "sampleCount": 2,
                   "language": "en"
                 }
             }
+            console.log(visionRequestBody);
             const visionResponse = await fetch(googleAuthParams.apiEndpoint, {
                 body: JSON.stringify(visionRequestBody),
                 headers: {
@@ -126,7 +127,13 @@ async function createStreamChat(message) {
                 },
                 method: 'POST'
             });
-             return (await visionResponse.json()).predictions[0];
+            let response = await visionResponse.json();
+            let aggragatedResponse = '';
+            if(response.predictions)
+                for(let index = 0; index < response.predictions.length; index++) {
+                    aggragatedResponse += response.predictions[index] + ' ';  
+                }
+            return aggragatedResponse ? aggragatedResponse : 'No prediction available for image.';
         }).then(caption => {
             handleChatReply(message, caption);
         });
@@ -139,11 +146,14 @@ async function createStreamChat(message) {
 async function handleChatReply(message, caption) {
     const messageContent = message.content ? message.content.startsWith('<@') ? message.content.slice(22) : message.content : 'Pretend this is a blank message.';
 
-    const streamResult = await streamChat.sendMessageStream(messageContent + caption ? ' context includes this image caption from Vertex AI: ' + caption : '');
+    const streamResult = await streamChat.sendMessageStream(messageContent + (caption ? ' context includes this image caption: ' + caption : ''));
     streamResult.response.then(response => {
-        const discordResponse = response.candidates ? response.candidates[0].content.parts[0].text : 'I am unable to generate a response.';
+        let discordResponse = response.candidates ? response.candidates[0].content.parts[0].text : 'I am unable to generate a response.';
   
         if(discordResponse) {
+            if(caption) {
+                discordResponse += `\n\nImage Caption: ` + caption;
+            }
             let discordMessages = splitStringByLength(discordResponse, 2000);
             for(let index = 0; index < discordMessages.length; index++) {
                 message.reply(discordMessages[index]);
