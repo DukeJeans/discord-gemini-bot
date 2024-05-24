@@ -94,6 +94,7 @@ client.on('interactionCreate', async interaction => {
 })
 
 async function createStreamChat(message) {
+    try {
     console.log(`Author: ${message.author.username}`);
     message.channel.sendTyping();
 
@@ -141,25 +142,37 @@ async function createStreamChat(message) {
     } else {
         await handleChatReply(message, null);
     }
+    }
+    catch(error) {
+        message.reply(error);
+    }
   }
 
 async function handleChatReply(message, caption) {
-    const messageContent = message.content ? message.content.startsWith('<@') ? message.content.slice(22) : message.content : 'Pretend this is a blank message.';
+    try {
+        const messageContent = message.content ? message.content.startsWith('<@') ? message.content.slice(22) : message.content : 'Pretend this is a blank message.';
 
-    const streamResult = await streamChat.sendMessageStream(messageContent + (caption ? ' context includes this image caption: ' + caption : ''));
-    streamResult.response.then(response => {
-        let discordResponse = response.candidates ? response.candidates[0].content.parts[0].text : 'I am unable to generate a response.';
-  
-        if(discordResponse) {
-            if(caption) {
-                discordResponse += `\n\nImage Caption: ` + caption;
+        const streamResult = await streamChat.sendMessageStream(messageContent + (caption ? ' context includes this image caption: ' + caption : ''));
+        streamResult.response.then(response => {
+            if(!response || !response.predictions || response.predictions.length === 0 || !response.predictions[0].role) {
+                let discordResponse = response.candidates ? response.candidates[0].content.parts[0].text : 'I am unable to generate a response.';
+      
+                if(discordResponse) {
+                    if(caption) {
+                        discordResponse += `\n\nImage Caption: ` + caption;
+                    }
+                    let discordMessages = splitStringByLength(discordResponse, 2000);
+                    for(let index = 0; index < discordMessages.length; index++) {
+                        message.reply(discordMessages[index]);
+                    }
+                }
             }
-            let discordMessages = splitStringByLength(discordResponse, 2000);
-            for(let index = 0; index < discordMessages.length; index++) {
-                message.reply(discordMessages[index]);
-            }
-        }
-    });
+            else message.reply('Response machine broke');
+        });
+    }
+    catch(error) {
+        message.reply(error);
+    }
 }
 
 function splitStringByLength(str, maxLength) {
