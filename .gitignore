@@ -9,3 +9,4 @@ yarn.lock
 
 #Ignore environment variables
 .env
+vision-key.json

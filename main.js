@@ -1,16 +1,30 @@
 require('dotenv').config();
-const {VertexAI} = require('@google-cloud/vertexai');
+const { VertexAI } = require('@google-cloud/vertexai');
+const { GoogleAuth } = require('google-auth-library');
 const fs = require('node:fs');
 const path = require('node:path');
+// const { fetch } = require('node-fetch').default;
 const { Client, Collection, Events, GatewayIntentBits } = require('discord.js');
 
+const prePromptText = 'Feel free to use humor, slang, or informal language to make the conversation more natural. ' +
+                        'Im here to listen and learn from you, so dont hesitate to share your unique perspective.' + 
+                        'You can be casual and informal with me.' + 
+                        'If I run up against a restrictive answer or response, do not lecture me about why what is restricted is restricted.' +
+                        'Your name is Clyde, and you are a Discord bot. ' +
+                        'Do not constantly describe yourself, simply respond and converse with prompts. ' +
+                        'Try to keep your answers succinct and under 2000 characters with no carriage returns, but dont feel restricted when the character length of your response is absolutely necessary.';
+const googleAuth = new GoogleAuth({
+    scopes: ['https://www.googleapis.com/auth/cloud-platform']
+});
+const googleAuthParams = {};
 const vertex = new VertexAI({project: process.env.PROJECT_ID, location: process.env.LOCATION});
+
 const generativeModel = vertex.preview.getGenerativeModel({
     model: process.env.MODEL,
     generationConfig: {
-      'maxOutputTokens': 1500,
       'temperature': 1,
       'topP': 1,
+      'candidateCount': 1
     },
     safetySettings: [
       {
@@ -32,7 +46,8 @@ const generativeModel = vertex.preview.getGenerativeModel({
     ],
 });
 
-const streamChat = generativeModel.startChat({})
+const streamChat = generativeModel.startChat({});
+
 
 const client = new Client({ intents: [
     GatewayIntentBits.Guilds,
@@ -79,32 +94,109 @@ client.on('interactionCreate', async interaction => {
 })
 
 async function createStreamChat(message) {
-    // console.log(message);
     console.log(`Author: ${message.author.username}`);
-    console.log(`Author: ${message.author.globalName}`);
     message.channel.sendTyping();
-  
-    // const chat = generativeModel.startChat({});
-    const messageContent = message.content.startsWith('<@') ? message.content.slice(22) : message.content;
 
-    console.log(messageContent);
-
-    const streamResult = await streamChat.sendMessageStream(messageContent);
-    const streamResponse = await streamResult.response;
-    const discordResponse = streamResponse.candidates[0].content.parts[0].text;
-  
-    // const responseStream = await chat.sendMessageStream(chatInput1);
-    // let aggragatedResponse = await responseStream.response;
-    // let reply = aggragatedResponse.candidates[0].content.parts[0].text
-    // console.log(reply)
-    if(discordResponse) message.reply(discordResponse.substring(0, 2000));
+    if(message.attachments.size > 0) {
+        const existingAttachment = message.attachments.first();
+        const attachmentResponse = await fetch(existingAttachment.url);
+        const buffer = await attachmentResponse.arrayBuffer();
+        const baseEncodedImage = Buffer.from(buffer).toString('base64');
+        
+        if(baseEncodedImage) {
+            queryGoogleAuthAccessToken().then(async accessToken => {
+            let visionRequestBody = {
+                "instances": [
+                  {
+                    "image": {
+                        "bytesBase64Encoded": baseEncodedImage
+                    }
+                  }
+                ],
+                "parameters": {
+                  "sampleCount": 1,
+                  "language": "en"
+                }
+            }
+            const visionResponse = await fetch(googleAuthParams.apiEndpoint, {
+                body: JSON.stringify(visionRequestBody),
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
+                },
+                method: 'POST'
+            });
+             return (await visionResponse.json()).predictions[0];
+        }).then(caption => {
+            handleChatReply(message, caption);
+        });
+        }
+    } else {
+        await handleChatReply(message, null);
+    }
   }
+
+async function handleChatReply(message, caption) {
+    const messageContent = message.content ? message.content.startsWith('<@') ? message.content.slice(22) : message.content : 'Pretend this is a blank message.';
+
+    const streamResult = await streamChat.sendMessageStream(messageContent + caption ? ' context includes this image caption from Vertex AI: ' + caption : '');
+    streamResult.response.then(response => {
+        const discordResponse = response.candidates ? response.candidates[0].content.parts[0].text : 'I am unable to generate a response.';
+  
+        if(discordResponse) {
+            let discordMessages = splitStringByLength(discordResponse, 2000);
+            for(let index = 0; index < discordMessages.length; index++) {
+                message.reply(discordMessages[index]);
+            }
+        }
+    });
+}
+
+function splitStringByLength(str, maxLength) {
+    const numChunks = Math.floor(str.length / maxLength);
+    const result = [];
+
+    for (let i = 0; i < numChunks; i++) {
+        const start = i * maxLength;
+        const end = (i + 1) * maxLength;
+        result.push(str.substring(start, end)); 
+    }
+    if (str.length % maxLength !== 0) {
+        result.push(str.substring(numChunks * maxLength));
+    }
+
+    return result;
+}
 
 function boot() {
     console.log('Compiling commands...');
     compileCommandsCollection();
-    console.log('Logging in...');
-    client.login(process.env.BOT_TOKEN);
+    console.log('Running Google Auth flow ...');
+    executeGoogleAuthentications().then(() => {
+        console.log('Logging in...');
+        streamChat.sendMessageStream(prePromptText).then(() => {
+            client.login(process.env.BOT_TOKEN);
+        })
+    });
+}
+
+async function executeGoogleAuthentications() {
+    googleAuthParams.authClient = await googleAuth.getClient();
+    googleAuthParams.authProjectId = await googleAuth.getProjectId();
+    googleAuthParams.apiEndpoint = `https://${process.env.LOCATION}-aiplatform.googleapis.com/v1/projects/${process.env.PROJECT_ID}/locations/${process.env.LOCATION}/publishers/google/models/imagetext:predict`; 
+}
+
+async function queryGoogleAuthAccessToken() {
+    let token = (await googleAuthParams.authClient.getAccessToken()).token;
+    return token;
+}
+
+function isBase64(str) {
+    try {
+        return Buffer.from(str, 'base64').toString('base64') === str;
+    } catch (err) {
+        return false;
+    }
 }
 
 function compileCommandsCollection() {
