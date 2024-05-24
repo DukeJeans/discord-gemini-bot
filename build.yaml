@@ -1,0 +1,13 @@
+﻿version: '2.1'
+
+stages:
+  - build
+
+jobs:
+  build:
+    steps:
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Run main.js
+        run: node main.js
