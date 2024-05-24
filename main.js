@@ -87,30 +87,25 @@ client.on('interactionCreate', async interaction => {
 })
 
 async function createStreamChat(message) {
-    // console.log(message);
     console.log(`Author: ${message.author.username}`);
     console.log(`Author: ${message.author.globalName}`);
     message.channel.sendTyping();
   
-    // const chat = generativeModel.startChat({});
     const messageContent = message.content.startsWith('<@') ? message.content.slice(22) : message.content;
 
     console.log(messageContent);
 
     const streamResult = await streamChat.sendMessageStream(prePromptText + ' ' + messageContent);
-    const streamResponse = await streamResult.response;
-    const discordResponse = streamResponse.candidates ? streamResponse.candidates[0].content.parts[0].text : 'I am unable to generate a response.';
+    streamResult.response.then(response => {
+        const discordResponse = response.candidates ? response.candidates[0].content.parts[0].text : 'I am unable to generate a response.';
   
-    // const responseStream = await chat.sendMessageStream(chatInput1);
-    // let aggragatedResponse = await responseStream.response;
-    // let reply = aggragatedResponse.candidates[0].content.parts[0].text
-    // console.log(reply)
-    if(discordResponse) {
-        let discordMessages = splitStringByLength(discordResponse, 2000);
-        for(let index = 0; index < discordMessages.length; index++) {
-            message.reply(discordMessages[index]);
+        if(discordResponse) {
+            let discordMessages = splitStringByLength(discordResponse, 2000);
+            for(let index = 0; index < discordMessages.length; index++) {
+                message.reply(discordMessages[index]);
+            }
         }
-    }
+    });
   }
 
 function splitStringByLength(str, maxLength) {
