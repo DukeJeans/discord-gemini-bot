@@ -40,7 +40,8 @@ const generativeModel = vertex.preview.getGenerativeModel({
     ],
 });
 
-const streamChat = generativeModel.startChat({})
+const streamChat = generativeModel.startChat({});
+
 
 const client = new Client({ intents: [
     GatewayIntentBits.Guilds,
@@ -93,9 +94,7 @@ async function createStreamChat(message) {
   
     const messageContent = message.content.startsWith('<@') ? message.content.slice(22) : message.content;
 
-    console.log(messageContent);
-
-    const streamResult = await streamChat.sendMessageStream(prePromptText + ' ' + messageContent);
+    const streamResult = await streamChat.sendMessageStream(messageContent);
     streamResult.response.then(response => {
         const discordResponse = response.candidates ? response.candidates[0].content.parts[0].text : 'I am unable to generate a response.';
   
@@ -109,7 +108,6 @@ async function createStreamChat(message) {
   }
 
 function splitStringByLength(str, maxLength) {
-    console.log(str);
     const numChunks = Math.floor(str.length / maxLength);
     const result = [];
 
@@ -129,7 +127,9 @@ function boot() {
     console.log('Compiling commands...');
     compileCommandsCollection();
     console.log('Logging in...');
-    client.login(process.env.BOT_TOKEN);
+    streamChat.sendMessageStream(prePromptText).then(() => {
+        client.login(process.env.BOT_TOKEN);
+    })
 }
 
 function compileCommandsCollection() {
