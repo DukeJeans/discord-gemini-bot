@@ -1,13 +1,16 @@
 ﻿version: '2.1'
 
 stages:
-  - build
-
-jobs:
-  build:
+- stage: build
+  jobs:
+  - job: build_job
     steps:
-      - name: Install Dependencies
-        run: npm install
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '20.x' 
+      displayName: 'Install Node.js'
 
-      - name: Run main.js
-        run: node main.js
+    - script: |
+        npm install
+        node main.js
+      displayName: 'Run main.js'
