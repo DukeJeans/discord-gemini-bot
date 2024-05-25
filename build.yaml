@@ -7,3 +7,6 @@ steps:
 - name: node
   entrypoint: node
   args: ["main.js"]
+
+options:
+  logging: CLOUD_LOGGING_ONLY
