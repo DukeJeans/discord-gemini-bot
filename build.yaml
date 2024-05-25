@@ -1,16 +1,11 @@
-﻿version: '2.1'
+﻿# Cloud Build File
+version: '1.1'
 
-stages:
-- stage: build
-  jobs:
-  - job: build_job
-    steps:
-    - task: NodeTool@0
-      inputs:
-        versionSpec: '20.x' 
-      displayName: 'Install Node.js'
+steps:
+- name: node
+  entrypoint: npm
+  args: ["install"]
 
-    - script: |
-        npm install
-        node main.js
-      displayName: 'Run main.js'
+- name: node
+  entrypoint: node
+  args: ["main.js"]
