@@ -1,6 +1,4 @@
 ﻿# Cloud Build File
-version: '1.1'
-
 steps:
 - name: node
   entrypoint: npm
