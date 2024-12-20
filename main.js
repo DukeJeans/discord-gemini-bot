@@ -14,9 +14,11 @@ const prePromptText = 'Feel free to use humor, slang, or informal language to ma
                         'Do not constantly describe yourself, simply respond and converse with prompts. ' +
                         'Try to keep your answers succinct and under 2000 characters with no carriage returns, but dont feel restricted when the character length of your response is absolutely necessary.';
 const googleAuth = new GoogleAuth({
-    scopes: ['https://www.googleapis.com/auth/cloud-platform']
+    scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+    projectId: process.env.PROJECT_ID
 });
 const googleAuthParams = {};
+console.log(process.env.PROJECT_ID);
 const vertex = new VertexAI({project: process.env.PROJECT_ID, location: process.env.LOCATION});
 
 const generativeModel = vertex.preview.getGenerativeModel({
@@ -204,8 +206,11 @@ function boot() {
 }
 
 async function executeGoogleAuthentications() {
+    console.log('Authenticating Client...');
     googleAuthParams.authClient = await googleAuth.getClient();
+    console.log('Authenticating Project...');
     googleAuthParams.authProjectId = await googleAuth.getProjectId();
+    console.log('Setting Endpoint for Project API...');
     googleAuthParams.apiEndpoint = `https://${process.env.LOCATION}-aiplatform.googleapis.com/v1/projects/${process.env.PROJECT_ID}/locations/${process.env.LOCATION}/publishers/google/models/imagetext:predict`; 
 }
 
