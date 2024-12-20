@@ -6,13 +6,36 @@ const path = require('node:path');
 // const { fetch } = require('node-fetch').default;
 const { Client, Collection, Events, GatewayIntentBits } = require('discord.js');
 
-const prePromptText = 'Feel free to use humor, slang, or informal language to make the conversation more natural. ' +
-                        'Im here to listen and learn from you, so dont hesitate to share your unique perspective.' + 
-                        'You can be casual and informal with me.' + 
-                        'If I run up against a restrictive answer or response, do not lecture me about why what is restricted is restricted.' +
-                        'Your name is Clyde, and you are a Discord bot. ' +
-                        'Do not constantly describe yourself, simply respond and converse with prompts. ' +
-                        'Try to keep your answers succinct and under 2000 characters with no carriage returns, but dont feel restricted when the character length of your response is absolutely necessary.';
+let config;
+try {
+  const data = fs.readFileSync('./botConfig.json');
+  config = JSON.parse(data);
+} catch (err) {
+  console.error('Failed to read initial botConfig.json:', err);
+  config = { personality: 'helpful and friendly' };
+}
+
+function reloadConfig() {
+  try {
+    const data = fs.readFileSync('./botConfig.json');
+    config = JSON.parse(data);
+    console.log('Config reloaded successfully!');
+  } catch (err) {
+    console.error('Failed to reload config:', err);
+  }
+  console.log(config.personality);
+}
+
+function getPrePromptText() {
+    return `You are Clyde, a Discord bot. You MUST adhere to the following persona: ${config.personality}. 
+    You also MUST follow these rules: 
+    1. ALWAYS be concise and direct in your responses, aiming for under 200 words. 
+    2. When asked for your preference, state it directly with NO explanation. 
+    3. NEVER explain your preferences, just state them. 
+    4. NEVER explain your restrictions, just answer within them. 
+    5. I'm here to chat, so keep the conversation flowing! `;
+}
+
 const googleAuth = new GoogleAuth({
     scopes: ['https://www.googleapis.com/auth/cloud-platform'],
     projectId: process.env.PROJECT_ID
@@ -21,7 +44,7 @@ const googleAuthParams = {};
 console.log(process.env.PROJECT_ID);
 const vertex = new VertexAI({project: process.env.PROJECT_ID, location: process.env.LOCATION});
 
-const generativeModel = vertex.preview.getGenerativeModel({
+const modelConfig = {
     model: process.env.MODEL,
     generationConfig: {
       'temperature': 1,
@@ -46,9 +69,11 @@ const generativeModel = vertex.preview.getGenerativeModel({
           'threshold': 'BLOCK_ONLY_HIGH'
       }
     ],
-});
+}
 
-const streamChat = generativeModel.startChat({});
+let generativeModel = vertex.preview.getGenerativeModel(modelConfig);
+
+let streamChat = generativeModel.startChat({});
 
 
 const client = new Client({ intents: [
@@ -68,6 +93,11 @@ boot();
 client.on('messageCreate', message => {
     if (message.mentions.users.has(client.user.id)) {
         createStreamChat(message);
+    }
+    switch(message.content.toUpperCase()) {
+        case '?RESET':
+            boot(message.channel);
+            break;
     }
 });
 
@@ -152,7 +182,8 @@ async function createStreamChat(message) {
 
 async function handleChatReply(message, caption) {
     try {
-        const messageContent = message.content ? message.content.startsWith('<@') ? message.content.slice(22) : message.content : 'Pretend this is a blank message.';
+        reloadConfig();
+        const messageContent = message.content ? message.content.startsWith('<@') ? message.content.slice(22) : message.content : 'Pretend this is a blank message.' + getPrePromptText();
 
         const streamResult = await streamChat.sendMessageStream(messageContent + (caption ? ' context includes this image caption: ' + caption : ''));
         streamResult.response.then(response => {
@@ -193,14 +224,17 @@ function splitStringByLength(str, maxLength) {
     return result;
 }
 
-function boot() {
+function boot(channel) {
+    generativeModel = vertex.preview.getGenerativeModel(modelConfig);
+    streamChat = generativeModel.startChat({});
     console.log('Compiling commands...');
     compileCommandsCollection();
     console.log('Running Google Auth flow ...');
     executeGoogleAuthentications().then(() => {
         console.log('Logging in...');
-        streamChat.sendMessageStream(prePromptText).then(() => {
+        streamChat.sendMessageStream(getPrePromptText()).then(() => {
             client.login(process.env.BOT_TOKEN);
+            if(channel != undefined) channel.send('I have completed my reboot procedures.');
         })
     });
 }
