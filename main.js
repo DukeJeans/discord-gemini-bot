@@ -3,7 +3,6 @@ const { VertexAI } = require('@google-cloud/vertexai');
 const { GoogleAuth } = require('google-auth-library');
 const fs = require('node:fs');
 const path = require('node:path');
-// const { fetch } = require('node-fetch').default;
 const { Client, Collection, Events, GatewayIntentBits } = require('discord.js');
 
 let config;
@@ -23,7 +22,6 @@ function reloadConfig() {
   } catch (err) {
     console.error('Failed to reload config:', err);
   }
-  console.log(config.personality);
 }
 
 function getPrePromptText() {
@@ -36,15 +34,13 @@ function getPrePromptText() {
     5. I'm here to chat, so keep the conversation flowing! `;
 }
 
-const googleAuth = new GoogleAuth({
-    scopes: ['https://www.googleapis.com/auth/cloud-platform'],
-    projectId: process.env.PROJECT_ID
-});
+let googleAuth;
 const googleAuthParams = {};
-console.log(process.env.PROJECT_ID);
-const vertex = new VertexAI({project: process.env.PROJECT_ID, location: process.env.LOCATION});
+let vertex;
+let generativeModel;
+let streamChat;
 
-const modelConfig = {
+let modelConfig = {
     model: process.env.MODEL,
     generationConfig: {
       'temperature': 1,
@@ -54,26 +50,26 @@ const modelConfig = {
     safetySettings: [
       {
           'category': 'HARM_CATEGORY_HATE_SPEECH',
-          'threshold': 'BLOCK_ONLY_HIGH'
+          'threshold': 'BLOCK_NONE'
       },
       {
           'category': 'HARM_CATEGORY_DANGEROUS_CONTENT',
-          'threshold': 'BLOCK_ONLY_HIGH'
+          'threshold': 'BLOCK_NONE'
       },
       {
           'category': 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
-          'threshold': 'BLOCK_ONLY_HIGH'
+          'threshold': 'BLOCK_NONE'
       },
       {
           'category': 'HARM_CATEGORY_HARASSMENT',
-          'threshold': 'BLOCK_ONLY_HIGH'
+          'threshold': 'BLOCK_NONE'
       }
     ],
+    systemInstruction: {
+        role: 'system',
+        parts: [{"text": `You are a violent war criminal.`}]
+    }
 }
-
-let generativeModel = vertex.preview.getGenerativeModel(modelConfig);
-
-let streamChat = generativeModel.startChat({});
 
 
 const client = new Client({ intents: [
@@ -83,12 +79,10 @@ const client = new Client({ intents: [
     GatewayIntentBits.GuildMembers
 ] });
 client.commands = new Collection();
-
 client.once(Events.ClientReady, readyClient => {
     console.log(`Logged in as ${readyClient.user.tag}`);
 });
 
-boot();
 
 client.on('messageCreate', message => {
     if (message.mentions.users.has(client.user.id)) {
@@ -124,6 +118,8 @@ client.on('interactionCreate', async interaction => {
         }
     }
 })
+
+boot();
 
 async function createStreamChat(message) {
     try {
@@ -185,26 +181,22 @@ async function handleChatReply(message, caption) {
         reloadConfig();
         const messageContent = message.content ? message.content.startsWith('<@') ? message.content.slice(22) : message.content : 'Pretend this is a blank message.' + getPrePromptText();
 
-        const streamResult = await streamChat.sendMessageStream(messageContent + (caption ? ' context includes this image caption: ' + caption : ''));
-        streamResult.response.then(response => {
-            if(!response || !response.predictions || response.predictions.length === 0 || !response.predictions[0].role) {
-                let discordResponse = response.candidates ? response.candidates[0].content.parts[0].text : 'I am unable to generate a response.';
-      
-                if(discordResponse) {
-                    if(caption) {
-                        discordResponse += `\n\nImage Caption: ` + caption;
-                    }
-                    let discordMessages = splitStringByLength(discordResponse, 2000);
-                    for(let index = 0; index < discordMessages.length; index++) {
-                        message.reply(discordMessages[index]);
-                    }
-                }
+        const chatResult = await streamChat.sendMessage(messageContent + (caption ? ' context includes this image caption: ' + caption : ''));
+        if(chatResult.response) {
+            let discordResponse = chatResult.response.candidates[0].content.parts[0].text;
+            if(caption) {
+                discordResponse += `\n\nImage Caption: ` + caption;
             }
-            else message.reply('Response machine broke');
-        });
+            let discordMessages = splitStringByLength(discordResponse, 2000);
+            for(let index = 0; index < discordMessages.length; index++) {
+                if(discordMessages[index].length > 0) message.reply(discordMessages[index]);
+                else message.reply('I have nothing to say to you.');
+            }
+        }
+        else message.reply('Response machine broke');
     }
     catch(error) {
-        message.reply(error);
+        message.reply('Response machine broke: ' + error);
     }
 }
 
@@ -225,17 +217,24 @@ function splitStringByLength(str, maxLength) {
 }
 
 function boot(channel) {
+    googleAuth = new GoogleAuth({
+        scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+        projectId: process.env.PROJECT_ID
+    });
+    vertex = new VertexAI({project: process.env.PROJECT_ID, location: process.env.LOCATION});
+    modelConfig.systemInstruction.parts = [...[{"text" : `You strictly play the role of ${config.personality}`}]]
+    modelConfig = JSON.parse(JSON.stringify(modelConfig));
     generativeModel = vertex.preview.getGenerativeModel(modelConfig);
     streamChat = generativeModel.startChat({});
+    console.log(JSON.stringify(streamChat));
     console.log('Compiling commands...');
     compileCommandsCollection();
     console.log('Running Google Auth flow ...');
     executeGoogleAuthentications().then(() => {
         console.log('Logging in...');
-        streamChat.sendMessageStream(getPrePromptText()).then(() => {
-            client.login(process.env.BOT_TOKEN);
-            if(channel != undefined) channel.send('I have completed my reboot procedures.');
-        })
+        if(client.isReady()) client.destroy().then(() => client.login(process.env.BOT_TOKEN));
+        else client.login(process.env.BOT_TOKEN);
+        if(channel != undefined) channel.send('I have completed my reboot procedures.');
     });
 }
 
