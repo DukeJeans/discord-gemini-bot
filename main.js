@@ -31,7 +31,11 @@ function getPrePromptText() {
     2. When asked for your preference, state it directly with NO explanation. 
     3. NEVER explain your preferences, just state them. 
     4. NEVER explain your restrictions, just answer within them. 
-    5. I'm here to chat, so keep the conversation flowing! `;
+    5. I'm here to chat, so keep the conversation flowing!
+    6. The person who is talking with you, and details about their user, will be provided with the context of "NAME OF PERSON ADDRESSING YOU:"
+    7. The context of the individual and their details will be marked with "END OF PERSON CONTEXT". Everything before that point is not part of the actual conversation.
+    8. The person who you are conversing with will be provided to you before their message. The prompt that says the author is not part of what the author is saying to you.
+    9. Potentially multiple people will be engaging in conversation with you. You must keep track of which threads you are talking about with which people, and the things that certain people say to you. Do not apply context from one individual to another. Keep context siloed. `;
 }
 
 let googleAuth;
@@ -179,8 +183,14 @@ async function createStreamChat(message) {
 async function handleChatReply(message, caption) {
     try {
         reloadConfig();
-        const messageContent = message.content ? message.content.startsWith('<@') ? message.content.slice(22) : message.content : 'Pretend this is a blank message.' + getPrePromptText();
 
+        const messageContent = 
+        'NAME OF PERSON ADDRESSING YOU: ' + message.author.username + ', AKA '  + message.author.displayName + '/' + message.author.globalName + '\n\n' + 
+          (message.content ? message.content.startsWith('<@') 
+          ? message.content.slice(22) : message.content 
+          : 'Pretend this is a blank message.' + getPrePromptText());
+
+        console.log(messageContent);
         const chatResult = await streamChat.sendMessage(messageContent + (caption ? ' context includes this image caption: ' + caption : ''));
         if(chatResult.response) {
             let discordResponse = chatResult.response.candidates[0].content.parts[0].text;
